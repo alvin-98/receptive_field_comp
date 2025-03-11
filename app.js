@@ -35,6 +35,12 @@ const confirmRepeatLayerBtn = document.getElementById("confirm-repeat-layer");
 const selectedLayersList = document
   .getElementById("selected-layers-list")
   .querySelector("ul");
+const editLayerModal = document.getElementById("edit-layer-modal");
+const editLayerNameInput = document.getElementById("edit-layer-name");
+const editKernelSizeInput = document.getElementById("edit-kernel-size");
+const editStrideInput = document.getElementById("edit-stride");
+const editPaddingInput = document.getElementById("edit-padding");
+const confirmEditLayerBtn = document.getElementById("confirm-edit-layer");
 
 // Context Menu
 const contextMenu = document.getElementById("context-menu");
@@ -46,11 +52,15 @@ const contextRemove = document.getElementById("context-remove");
 // Initialize the receptive field calculator
 const calculator = new ReceptiveFieldCalculator(128);
 
+// Debug the initial calculator state
+console.log("Initial calculator state:", calculator.getLayers()[0]);
+
 // State variables
 let selectedLayers = [];
 let lastSelectedLayerIndex = null;
 let rightClickedLayerIndex = null;
 let layerToRepeatIndex = null;
+let layerToEditIndex = -1;
 
 // Initialize the 3D visualization
 let scene, camera, renderer, controls;
@@ -157,6 +167,9 @@ function initModals() {
   // Repeat layer button
   confirmRepeatLayerBtn.addEventListener("click", confirmRepeatLayer);
 
+  // Edit Layer modal
+  confirmEditLayerBtn.addEventListener("click", confirmEditLayer);
+
   // Close buttons
   closeModalButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -169,7 +182,8 @@ function initModals() {
     if (
       e.target === addLayerModal ||
       e.target === createGroupModal ||
-      e.target === repeatLayerModal
+      e.target === repeatLayerModal ||
+      e.target === editLayerModal
     ) {
       closeAllModals();
     }
@@ -193,67 +207,109 @@ function initContextMenu() {
 
   // Context menu actions
   contextAddToGroup.addEventListener("click", () => {
-    if (rightClickedLayerIndex !== null) {
+    if (rightClickedLayerIndex !== null && rightClickedLayerIndex > 0) {
       selectedLayers = [rightClickedLayerIndex];
       showGroupCreationModal();
     }
+    hideContextMenu();
   });
 
   contextRepeat.addEventListener("click", () => {
     if (rightClickedLayerIndex !== null && rightClickedLayerIndex > 0) {
       showRepeatLayerModal();
     }
+    hideContextMenu();
   });
 
   contextRename.addEventListener("click", () => {
-    if (rightClickedLayerIndex !== null && rightClickedLayerIndex > 0) {
+    if (rightClickedLayerIndex !== null) {
+      // Allow renaming for input layer too (index 0)
       const row = document.querySelector(
         `tr[data-layer-index="${rightClickedLayerIndex}"]`
       );
       editLayerName(rightClickedLayerIndex, row);
     }
+    hideContextMenu();
   });
 
   contextRemove.addEventListener("click", () => {
     if (rightClickedLayerIndex !== null && rightClickedLayerIndex > 0) {
       removeLayer(rightClickedLayerIndex);
     }
+    hideContextMenu();
+  });
+
+  // Edit Layer option
+  document.getElementById("context-edit").addEventListener("click", () => {
+    if (rightClickedLayerIndex !== null) {
+      showEditLayerModal(rightClickedLayerIndex);
+    }
+    hideContextMenu();
   });
 }
 
-// Show modal
+// Show a modal
 function showModal(modal) {
   modal.classList.add("show");
 }
 
 // Close all modals
 function closeAllModals() {
+  // Hide all modals
   addLayerModal.classList.remove("show");
   createGroupModal.classList.remove("show");
   repeatLayerModal.classList.remove("show");
+  editLayerModal.classList.remove("show");
 
   // Clear input fields
   layerNameInput.value = "";
   groupNameInput.value = "";
   repeatLayerNameInput.value = "";
+  editLayerNameInput.value = "";
+  editKernelSizeInput.value = "";
+  editStrideInput.value = "";
+  editPaddingInput.value = "";
+
+  // Remove dynamically added input size field if it exists
+  const inputSizeGroup = document.getElementById("edit-input-size-group");
+  if (inputSizeGroup) {
+    inputSizeGroup.remove();
+  }
 
   // Reset context menu related variables
   rightClickedLayerIndex = null;
+  layerToEditIndex = -1;
+  layerToRepeatIndex = -1;
 }
 
 // Show context menu
 function showContextMenu(e, layerIndex) {
+  e.preventDefault();
   rightClickedLayerIndex = layerIndex;
 
-  // Position the menu
+  console.log("Context menu requested for layer index:", layerIndex);
+
+  // Position the context menu
   contextMenu.style.left = `${e.pageX}px`;
   contextMenu.style.top = `${e.pageY}px`;
-
-  // Show the menu
   contextMenu.style.display = "block";
 
-  // Prevent default menu
-  e.preventDefault();
+  // Disable certain options for the input layer
+  const isInputLayer = layerIndex === 0;
+  document.getElementById("context-add-to-group").style.display = isInputLayer
+    ? "none"
+    : "block";
+  document.getElementById("context-remove").style.display = isInputLayer
+    ? "none"
+    : "block";
+  document.getElementById("context-repeat").style.display = isInputLayer
+    ? "none"
+    : "block";
+
+  // Rename should be available for all layers including the input layer
+  // Edit should be available for all layers including the input layer
+
+  return false;
 }
 
 // Hide context menu
@@ -507,21 +563,61 @@ function renderNetworkTable() {
   const layers = calculator.getLayers();
   const groups = calculator.getGroups();
 
-  // Clear existing layers except the input layer (first row)
-  while (networkTableBody.children.length > 1) {
-    networkTableBody.removeChild(networkTableBody.lastChild);
-  }
+  console.log("Rendering network table with input layer:", layers[0]);
 
-  // Update the input layer information
-  const inputLayer = layers[0];
-  inputSizeElement.textContent = inputLayer.input;
-  inputOutElement.textContent = inputLayer.output;
-  document.getElementById("input-rout").textContent = inputLayer.rout;
+  // Clear existing table content
+  networkTableBody.innerHTML = "";
 
-  // Add all layers except the input layer (which is already in the table)
-  for (let i = 1; i < layers.length; i++) {
+  // Add all layers
+  for (let i = 0; i < layers.length; i++) {
     const layer = layers[i];
-    addLayerToTable(layer, i);
+    if (i === 0) {
+      // Create the input layer row manually
+      const tr = document.createElement("tr");
+      tr.setAttribute("data-layer-index", 0);
+      tr.classList.add("input-layer");
+
+      // Display custom name if available
+      const displayName = layer.customName || "INPUT LAYER";
+
+      tr.innerHTML = `
+        <td class="layer-name-cell">
+          <span>${displayName}</span>
+        </td>
+        <td class="editable-cell" id="input-size-cell">
+          <span id="input-size">${layer.input}</span>
+          <div class="edit-icon"><i class="fas fa-edit"></i></div>
+        </td>
+        <td>${layer.rin}</td>
+        <td>${layer.jin}</td>
+        <td>${layer.s}</td>
+        <td>${layer.p}</td>
+        <td id="input-out">${layer.output}</td>
+        <td id="input-rout">${layer.rout}</td>
+        <td>${layer.jout}</td>
+        <td>${layer.k}</td>
+        <td>-</td>
+      `;
+
+      networkTableBody.appendChild(tr);
+
+      // Reattach the input size editing event listener
+      const inputSizeCell = tr.querySelector("#input-size-cell");
+      if (inputSizeCell) {
+        inputSizeCell.addEventListener("click", showInputSizeEditor);
+      }
+
+      // Add right-click event for context menu
+      tr.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("Input layer right-clicked");
+        showContextMenu(e, 0);
+        return false;
+      });
+    } else {
+      addLayerToTable(layer, i);
+    }
   }
 }
 
@@ -739,6 +835,7 @@ function showAddLayerAfterModal(afterIndex) {
 function editLayerName(index, row) {
   const layer = calculator.getLayers()[index];
   const currentName = layer.customName || layer.name;
+  const defaultName = index === 0 ? "INPUT LAYER" : layer.name;
 
   // Create an inline edit form
   const nameCell = row.querySelector(".layer-name-cell");
@@ -747,7 +844,9 @@ function editLayerName(index, row) {
   // Replace cell content with an edit form
   nameCell.innerHTML = `
     <div class="edit-name-form">
-        <input type="text" class="name-input" value="${layer.customName || ""}">
+        <input type="text" class="name-input" value="${
+          layer.customName || ""
+        }" placeholder="${defaultName}">
         <button class="btn secondary save-name">Save</button>
         <button class="btn secondary cancel-edit">Cancel</button>
     </div>
@@ -761,11 +860,21 @@ function editLayerName(index, row) {
   saveBtn.addEventListener("click", () => {
     calculator.updateLayerName(index, nameInput.value.trim());
     renderNetworkTable();
+    updateVisualization(); // Update visualization to reflect new name
   });
 
   cancelBtn.addEventListener("click", () => {
     nameCell.innerHTML = currentHTML;
-    // Re-add event listeners to any buttons if needed
+
+    // Re-add the right-click event listener for the input layer
+    if (index === 0) {
+      row.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showContextMenu(e, 0);
+        return false;
+      });
+    }
   });
 
   // Focus the input
@@ -869,125 +978,81 @@ function animate() {
 
 // Update the visualization based on current network
 function updateVisualization() {
-  // Clear existing cubes
-  cubes.forEach((cube) => scene.remove(cube));
-  cubes = [];
+  // Clear existing visualization
+  while (scene.children.length > 0) {
+    const object = scene.children[0];
+    if (object.geometry) object.geometry.dispose();
+    if (object.material) object.material.dispose();
+    scene.remove(object);
+  }
 
+  // Rebuild the visualization
   const layers = calculator.getLayers();
-  if (layers.length === 0) return;
+  const totalLayers = layers.length;
 
-  // Set up the maximum size for scaling
-  const maxSize = Math.max(...layers.map((layer) => layer.input));
-  const scaleFactor = 100 / maxSize;
+  // Add each layer
+  for (let i = 0; i < totalLayers; i++) {
+    const layer = layers[i];
+    const x = i * 20 - (totalLayers - 1) * 10; // Shift to center the visualization
 
-  // Position offset for each layer
-  let zOffset = 0;
-  const zSpacing = 25;
-
-  // Track groups for coloring
-  const groups = calculator.getGroups();
-
-  // Create a visual for each layer
-  layers.forEach((layer, index) => {
-    // Create a cube for the layer
-    const geometry = new THREE.BoxGeometry(
-      layer.output * scaleFactor,
-      layer.output * scaleFactor,
-      5
-    );
-
-    // Different material color based on layer type and group
-    let material;
+    // Calculate a color based on the layer type and position
     let color;
+    if (i === 0) {
+      // Input layer
+      color = new THREE.Color(0x6366f1); // Indigo
+    } else if (layer.type === "maxpool") {
+      color = new THREE.Color(0xec4899); // Pink
+    } else if (layer.group !== null) {
+      // Layer is part of a group - use a gradient based on position
+      const group = calculator.getGroupById(layer.group);
+      const groupLength = group.endIndex - group.startIndex + 1;
+      const positionInGroup = i - group.startIndex;
+      const gradientPosition = positionInGroup / groupLength;
 
-    // First determine base color by type
-    switch (layer.type) {
-      case "input":
-        color = 0x6366f1; // Primary color
-        break;
-      case "conv2d":
-        color = 0xec4899; // Secondary color (pink)
-        break;
-      case "maxpool":
-        color = 0x10b981; // Green
-        break;
-      case "1x1":
-        color = 0x8b5cf6; // Purple
-        break;
-      default:
-        color = 0x94a3b8; // Gray
+      // Create a gradient from blue to purple
+      const startColor = new THREE.Color(0x60a5fa); // Blue
+      const endColor = new THREE.Color(0xa78bfa); // Purple
+      color = startColor.clone().lerp(endColor, gradientPosition);
+    } else if (layer.type === "1x1") {
+      color = new THREE.Color(0x34d399); // Emerald
+    } else {
+      // Regular conv layer
+      color = new THREE.Color(0x3b82f6); // Blue
     }
 
-    // If layer is part of a group, adjust color slightly
-    if (layer.group !== null) {
-      // Create a slightly brighter version for grouped layers
-      const groupColor = new THREE.Color(color);
-      groupColor.multiplyScalar(1.2); // Make it brighter
-      color = groupColor.getHex();
-    }
+    // Layer dimensions based on input/output size
+    const height = layer.input * 0.05;
+    const width = layer.output * 0.05;
+    const depth = 5;
 
-    material = new THREE.MeshLambertMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.15,
+    // Create the layer representation
+    const geometry = new THREE.BoxGeometry(width, height, depth);
+    const material = new THREE.MeshPhongMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.8,
+      emissive: color.clone().multiplyScalar(0.2),
     });
 
     const cube = new THREE.Mesh(geometry, material);
-    cube.position.z = -zOffset;
+    cube.position.set(x, 0, 0);
     scene.add(cube);
-    cubes.push(cube);
 
-    // For all layers except the first, visualize the receptive field
-    if (index > 0) {
-      const receptiveFieldSize = layer.rout * scaleFactor;
-      const rfGeometry = new THREE.BoxGeometry(
-        receptiveFieldSize,
-        receptiveFieldSize,
-        5
-      );
-      const rfMaterial = new THREE.MeshBasicMaterial({
-        color: 0xf8fafc,
-        opacity: 0.2,
-        transparent: true,
-        wireframe: true,
-      });
-
-      const rfCube = new THREE.Mesh(rfGeometry, rfMaterial);
-      rfCube.position.z = -zOffset + 5;
-      scene.add(rfCube);
-      cubes.push(rfCube);
-
-      // Add text for receptive field size
-      const text = `RF: ${layer.rout}x${layer.rout}`;
-      addText(text, 0, 0, -zOffset + 10);
-    }
-
-    // Add a subtle glow effect
-    const glowGeometry = new THREE.BoxGeometry(
-      layer.output * scaleFactor + 2,
-      layer.output * scaleFactor + 2,
-      5
-    );
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.1,
-      side: THREE.BackSide,
+    // Add an edge outline to the cube
+    const edges = new THREE.EdgesGeometry(geometry);
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: color.clone().multiplyScalar(1.2),
+      linewidth: 1,
     });
+    const edgeLines = new THREE.LineSegments(edges, lineMaterial);
+    cube.add(edgeLines);
 
-    const glowCube = new THREE.Mesh(glowGeometry, glowMaterial);
-    glowCube.position.z = -zOffset;
-    scene.add(glowCube);
-    cubes.push(glowCube);
+    // Add text label
+    const displayName = layer.customName || layer.name;
+    addText(displayName, x, height / 2 + 3, 0);
 
-    // Increment z-offset for next layer
-    zOffset += zSpacing;
-  });
-
-  // Reset camera position for a good view
-  if (cubes.length > 0) {
-    camera.position.z = 200;
-    controls.update();
+    // Add receptive field label
+    addText(`RF: ${layer.rout}`, x, -height / 2 - 3, 0);
   }
 }
 
@@ -998,6 +1063,122 @@ function addText(text, x, y, z) {
   // or TextGeometry with a preloaded font
 }
 
+// Show the edit layer modal for a specific layer
+function showEditLayerModal(layerIndex) {
+  // Store the index of the layer being edited
+  layerToEditIndex = layerIndex;
+
+  // Get the layer
+  const layer = calculator.getLayers()[layerIndex];
+
+  // Populate the form with the layer's current values
+  editLayerNameInput.value = layer.customName || "";
+  editKernelSizeInput.value = layer.k;
+  editStrideInput.value = layer.s;
+  editPaddingInput.value = layer.p;
+
+  // Special handling for input layer
+  if (layerIndex === 0) {
+    // Add input size field for the input layer
+    const inputSizeFormGroup = document.createElement("div");
+    inputSizeFormGroup.className = "form-group";
+    inputSizeFormGroup.id = "edit-input-size-group";
+    inputSizeFormGroup.innerHTML = `
+      <label for="edit-input-size-value">Input Size:</label>
+      <input type="number" id="edit-input-size-value" min="1" value="${layer.input}" />
+    `;
+
+    // Insert it as the first field in the form
+    const modalBody = editLayerModal.querySelector(".modal-body");
+    const firstField = modalBody.querySelector(".form-group");
+    modalBody.insertBefore(inputSizeFormGroup, firstField);
+
+    editLayerModal.querySelector(".modal-header h3").textContent =
+      "Edit Input Layer";
+  } else {
+    // Remove input size field if it exists
+    const inputSizeGroup = document.getElementById("edit-input-size-group");
+    if (inputSizeGroup) {
+      inputSizeGroup.remove();
+    }
+
+    editLayerModal.querySelector(".modal-header h3").textContent = "Edit Layer";
+  }
+
+  // Show the modal
+  showModal(editLayerModal);
+}
+
+// Save the edited layer
+function confirmEditLayer() {
+  // Validate the layer index
+  if (
+    layerToEditIndex < 0 ||
+    layerToEditIndex >= calculator.getLayers().length
+  ) {
+    alert("Invalid layer selection.");
+    return;
+  }
+
+  // Get the form values
+  const customName = editLayerNameInput.value.trim();
+  const kernelSize = parseInt(editKernelSizeInput.value);
+  const stride = parseInt(editStrideInput.value);
+  const padding = parseInt(editPaddingInput.value);
+
+  // Validate numeric inputs
+  if (isNaN(kernelSize) || kernelSize < 1) {
+    alert("Kernel size must be a positive number.");
+    return;
+  }
+
+  if (isNaN(stride) || stride < 1) {
+    alert("Stride must be a positive number.");
+    return;
+  }
+
+  if (isNaN(padding) || padding < 0) {
+    alert("Padding must be a non-negative number.");
+    return;
+  }
+
+  // Create config object with common properties
+  const config = {
+    customName,
+    kernelSize,
+    stride,
+    padding,
+  };
+
+  // Add input size for the input layer
+  if (layerToEditIndex === 0) {
+    const inputSizeInput = document.getElementById("edit-input-size-value");
+    const inputSize = parseInt(inputSizeInput.value);
+
+    if (isNaN(inputSize) || inputSize < 1) {
+      alert("Input size must be a positive number.");
+      return;
+    }
+
+    config.input = inputSize;
+  }
+
+  // Update the layer
+  if (calculator.updateLayer(layerToEditIndex, config)) {
+    // Refresh the UI
+    renderNetworkTable();
+    updateVisualization();
+
+    // Close the modal
+    closeAllModals();
+
+    // Reset the edit index
+    layerToEditIndex = -1;
+  } else {
+    alert("Failed to update the layer.");
+  }
+}
+
 // Initialize the application
 function init() {
   initInputSizeEditing();
@@ -1005,6 +1186,23 @@ function init() {
   initModals();
   initContextMenu();
   initVisualization();
+
+  // Force calculator to recalculate and update the input layer display
+  const inputLayer = calculator.getLayers()[0];
+  inputSizeElement.textContent = inputLayer.input;
+  inputOutElement.textContent = inputLayer.output;
+  document.getElementById("input-rout").textContent = inputLayer.rout;
+
+  // Directly attach right-click handler to the input layer row
+  document
+    .getElementById("input-layer-row")
+    .addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("Input layer right-clicked via direct handler");
+      showContextMenu(e, 0);
+      return false;
+    });
 
   // Add document click to clear selections when clicking outside the table
   document.addEventListener("click", (e) => {
@@ -1015,6 +1213,11 @@ function init() {
       clearLayerSelection();
     }
   });
+
+  // Log a message to confirm initialization is complete
+  console.log(
+    "Application initialized. Right-click handlers should be active."
+  );
 }
 
 // Start the application when the DOM is loaded

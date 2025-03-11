@@ -11,6 +11,13 @@ class ReceptiveFieldCalculator {
     this.groups = [];
     // Initialize with input layer
     this.addInputLayer(inputSize);
+
+    // Force the correct output calculation for the input layer
+    const inputLayer = this.layers[0];
+    inputLayer.output =
+      Math.floor(
+        (inputLayer.input + 2 * inputLayer.p - inputLayer.k) / inputLayer.s
+      ) + 1;
   }
 
   /**
@@ -21,9 +28,14 @@ class ReceptiveFieldCalculator {
     const k = 3; // Default kernel size for input layer
     const jin = 1;
     const rin = 1;
+    const p = 0; // padding
+    const s = 1; // stride
 
     // Calculate the receptive field size: r_out = r_in + (k - 1) * j_in
     const rout = rin + (k - 1) * jin; // This should be 3 for k=3
+
+    // Calculate output size using the standard formula:
+    const output = Math.floor((size + 2 * p - k) / s) + 1;
 
     const inputLayer = {
       name: "INPUT LAYER",
@@ -32,10 +44,10 @@ class ReceptiveFieldCalculator {
       input: size,
       rin: rin, // receptive field size at input
       jin: jin, // jump/stride-product at input
-      s: 1, // stride
-      p: 0, // padding
+      s: s, // stride
+      p: p, // padding
       k: k, // kernel size for input layer
-      output: size,
+      output: output, // Properly calculated output size
       rout: rout, // receptive field size at output (should be 3)
       jout: jin, // jump/stride-product at output
       group: null, // group this layer belongs to
@@ -52,12 +64,16 @@ class ReceptiveFieldCalculator {
   updateInputSize(size) {
     if (size <= 0) return false;
 
+    const p = this.layers[0].p;
+    const k = this.layers[0].k;
+    const s = this.layers[0].s;
+
     this.layers[0].input = size;
-    this.layers[0].output = size;
+    // Calculate output size using the standard formula
+    this.layers[0].output = Math.floor((size + 2 * p - k) / s) + 1;
 
-    // Recalculate all subsequent layers
+    // Recalculate the network to propagate changes
     this.recalculateNetwork();
-
     return true;
   }
 
@@ -331,6 +347,12 @@ class ReceptiveFieldCalculator {
   recalculateNetwork() {
     const inputLayer = this.layers[0];
 
+    // Explicitly recalculate the input layer's output
+    inputLayer.output =
+      Math.floor(
+        (inputLayer.input + 2 * inputLayer.p - inputLayer.k) / inputLayer.s
+      ) + 1;
+
     for (let i = 1; i < this.layers.length; i++) {
       const prevLayer = this.layers[i - 1];
       const currentLayer = this.layers[i];
@@ -488,5 +510,97 @@ class ReceptiveFieldCalculator {
         }
       }
     }
+  }
+
+  /**
+   * Update an existing layer's properties
+   * @param {number} index - The index of the layer to update
+   * @param {object} layerConfig - Configuration for the layer update
+   * @returns {boolean} - Whether the update was successful
+   */
+  updateLayer(index, layerConfig) {
+    // Validate the index
+    if (index < 0 || index >= this.layers.length) {
+      return false;
+    }
+
+    // Special handling for input layer
+    if (index === 0) {
+      return this.updateInputLayer(layerConfig);
+    }
+
+    const { kernelSize, stride, padding, customName } = layerConfig;
+    const layer = this.layers[index];
+
+    // Update the layer properties
+    if (kernelSize !== undefined) {
+      layer.k = kernelSize;
+    }
+
+    if (stride !== undefined) {
+      layer.s = stride;
+    }
+
+    if (padding !== undefined) {
+      layer.p = padding;
+    }
+
+    if (customName !== undefined && customName.trim() !== "") {
+      layer.customName = customName.trim();
+    }
+
+    // Recalculate the network starting from this layer
+    this.recalculateNetwork();
+
+    return true;
+  }
+
+  /**
+   * Update the input layer properties
+   * @param {object} layerConfig - Configuration for the input layer update
+   * @returns {boolean} - Whether the update was successful
+   */
+  updateInputLayer(layerConfig) {
+    const { kernelSize, input, padding, stride, customName } = layerConfig;
+    const inputLayer = this.layers[0];
+
+    // Update input size if provided
+    if (input !== undefined && input > 0) {
+      inputLayer.input = input;
+    }
+
+    // Update kernel size if provided
+    if (kernelSize !== undefined && kernelSize > 0) {
+      inputLayer.k = kernelSize;
+    }
+
+    // Update padding if provided
+    if (padding !== undefined && padding >= 0) {
+      inputLayer.p = padding;
+    }
+
+    // Update stride if provided
+    if (stride !== undefined && stride > 0) {
+      inputLayer.s = stride;
+    }
+
+    // Update custom name if provided
+    if (customName !== undefined && customName.trim() !== "") {
+      inputLayer.customName = customName.trim();
+    }
+
+    // Recalculate the output size based on the new parameters
+    inputLayer.output =
+      Math.floor(
+        (inputLayer.input + 2 * inputLayer.p - inputLayer.k) / inputLayer.s
+      ) + 1;
+
+    // Recalculate the receptive field size
+    inputLayer.rout = inputLayer.rin + (inputLayer.k - 1) * inputLayer.jin;
+
+    // Recalculate the network
+    this.recalculateNetwork();
+
+    return true;
   }
 }

@@ -44,7 +44,11 @@
                 </tr>
               </thead>
               <tbody id="network-layers">
-                <tr class="input-layer" data-layer-index="0">
+                <tr
+                  class="input-layer"
+                  data-layer-index="0"
+                  id="input-layer-row"
+                >
                   <td class="layer-name-cell">
                     <span>INPUT LAYER</span>
                   </td>
@@ -56,7 +60,7 @@
                   <td>1</td>
                   <td>1</td>
                   <td>0</td>
-                  <td id="input-out">128</td>
+                  <td id="input-out"></td>
                   <td id="input-rout">3</td>
                   <td>1</td>
                   <td>3</td>
@@ -177,6 +181,7 @@
           <li id="context-add-to-group">Add to Group</li>
           <li id="context-repeat">Repeat Layer</li>
           <li id="context-rename">Rename Layer</li>
+          <li id="context-edit">Edit Layer</li>
           <li id="context-remove">Remove Layer</li>
         </ul>
       </div>
@@ -201,6 +206,44 @@
           <div class="modal-footer">
             <button id="confirm-repeat-layer" class="btn primary">
               Create
+            </button>
+            <button class="btn secondary close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit Layer Modal -->
+      <div id="edit-layer-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Edit Layer</h3>
+            <button class="close-modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="edit-layer-name">Layer Name:</label>
+              <input
+                type="text"
+                id="edit-layer-name"
+                placeholder="Custom layer name"
+              />
+            </div>
+            <div class="form-group">
+              <label for="edit-kernel-size">Kernel Size:</label>
+              <input type="number" id="edit-kernel-size" min="1" />
+            </div>
+            <div class="form-group">
+              <label for="edit-stride">Stride:</label>
+              <input type="number" id="edit-stride" min="1" />
+            </div>
+            <div class="form-group">
+              <label for="edit-padding">Padding:</label>
+              <input type="number" id="edit-padding" min="0" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="confirm-edit-layer" class="btn primary">
+              Save Changes
             </button>
             <button class="btn secondary close-modal">Cancel</button>
           </div>
