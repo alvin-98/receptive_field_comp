@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neural Network Receptive Field Calculator</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Neural Network Receptive Field Calculator</h1>
+      </header>
+
+      <main>
+        <div class="network-panel">
+          <h2>Network Architecture</h2>
+          <div class="table-actions">
+            <button id="add-layer-btn" class="btn primary" title="Add Layer">
+              <i class="fas fa-plus"></i> Add Layer
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table id="network-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Input</th>
+                  <th>Rin</th>
+                  <th>Jin</th>
+                  <th>s</th>
+                  <th>p</th>
+                  <th>Out</th>
+                  <th>Rout</th>
+                  <th>Jout</th>
+                  <th>k</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="network-layers">
+                <tr class="input-layer" data-layer-index="0">
+                  <td class="layer-name-cell">
+                    <span>INPUT LAYER</span>
+                  </td>
+                  <td class="editable-cell" id="input-size-cell">
+                    <span id="input-size">128</span>
+                    <div class="edit-icon"><i class="fas fa-edit"></i></div>
+                  </td>
+                  <td>1</td>
+                  <td>1</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td id="input-out">128</td>
+                  <td id="input-rout">3</td>
+                  <td>1</td>
+                  <td>3</td>
+                  <td>-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="visualization-panel">
+          <h2>Receptive Field Visualization</h2>
+          <div id="visualization"></div>
+          <div class="formula-info">
+            <h3>RF Formula</h3>
+            <p>
+              Output size: n<sub>out</sub> = (n<sub>in</sub> + 2p - k) / s + 1
+            </p>
+            <p>
+              Receptive field: r<sub>out</sub> = r<sub>in</sub> + (k - 1) *
+              j<sub>in</sub>
+            </p>
+            <p>Jump/stride: j<sub>out</sub> = j<sub>in</sub> * s</p>
+          </div>
+        </div>
+      </main>
+
+      <!-- Layer Add Modal -->
+      <div id="add-layer-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Add New Layer</h3>
+            <button class="close-modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="layer-name">Layer Name (optional):</label>
+              <input
+                type="text"
+                id="layer-name"
+                placeholder="Custom layer name"
+              />
+            </div>
+            <div class="form-group">
+              <label for="layer-type">Layer Type:</label>
+              <select id="layer-type">
+                <option value="conv2d">Conv2D</option>
+                <option value="maxpool">MaxPool</option>
+                <option value="1x1">1x1 Layer</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="kernel-size">Kernel Size:</label>
+              <input type="number" id="kernel-size" value="3" min="1" />
+            </div>
+            <div class="form-group">
+              <label for="stride">Stride:</label>
+              <input type="number" id="stride" value="1" min="1" />
+            </div>
+            <div class="form-group">
+              <label for="padding">Padding:</label>
+              <input type="number" id="padding" value="1" min="0" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="modal-add-layer" class="btn primary">Add Layer</button>
+            <button class="btn secondary close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Group Creation Modal -->
+      <div id="create-group-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Create Layer Group</h3>
+            <button class="close-modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="group-name">Group Name:</label>
+              <input
+                type="text"
+                id="group-name"
+                placeholder="Enter group name"
+              />
+            </div>
+            <div id="selected-layers-list" class="selected-layers">
+              <p>Selected layers:</p>
+              <ul></ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="create-group-btn" class="btn primary">
+              Create Group
+            </button>
+            <button class="btn secondary close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Size Edit Form -->
+      <div
+        id="input-size-edit"
+        class="edit-input-size-form"
+        style="display: none"
+      >
+        <input type="number" id="edit-input-size" min="1" />
+        <button id="save-input-size" class="btn primary btn-sm">Save</button>
+        <button id="cancel-input-size" class="btn secondary btn-sm">
+          Cancel
+        </button>
+      </div>
+
+      <!-- Context Menu -->
+      <div id="context-menu" class="context-menu">
+        <ul>
+          <li id="context-add-to-group">Add to Group</li>
+          <li id="context-repeat">Repeat Layer</li>
+          <li id="context-rename">Rename Layer</li>
+          <li id="context-remove">Remove Layer</li>
+        </ul>
+      </div>
+
+      <!-- Repeat Layer Modal -->
+      <div id="repeat-layer-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Repeat Layer</h3>
+            <button class="close-modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="repeat-layer-name">New Layer Name:</label>
+              <input
+                type="text"
+                id="repeat-layer-name"
+                placeholder="Enter a name for the repeated layer"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="confirm-repeat-layer" class="btn primary">
+              Create
+            </button>
+            <button class="btn secondary close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <script src="receptive-field.js"></script>
+      <script src="app.js"></script>
+    </div>
+  </body>
+</html>
